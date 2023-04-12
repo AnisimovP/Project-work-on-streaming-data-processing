@@ -2,6 +2,7 @@ import os
 
 from datetime import datetime
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import when
 from pyspark.sql.functions import from_json, to_json, col, lit, struct
 from pyspark.sql.types import StructType, StructField, StringType, LongType
 
@@ -24,6 +25,14 @@ kafka_security_options = {
     'kafka.sasl.jaas.config': 'org.apache.kafka.common.security.scram.ScramLoginModule required '
                               'username=\"de-student\" password=\"ltcneltyn\";',
 }
+
+postgresql_settings = {
+    'user': 'jovyan',
+    'password': 'jovyan',
+    'driver': 'org.postgresql.Driver',
+}
+
+
 kafka_bootstrap_servers = 'rc1b-2erh7b35n4j4v869.mdb.yandexcloud.net:9091'
 
 # создаём spark сессию с необходимыми библиотеками в spark_jars_packages для интеграции с Kafka и PostgreSQL
@@ -82,19 +91,19 @@ filtered_read_stream_df = restaurant_read_stream_df \
 
 # вычитываем всех пользователей с подпиской на рестораны
 subscribers_restaurant_df = spark.read \
-        .format('jdbc') \
-        .option('url', 'jdbc:postgresql://localhost:5432/de') \
-        .option('driver', 'org.postgresql.Driver') \
-        .option('dbtable', 'subscribers_restaurants') \
-        .option('user', 'jovyan') \
-        .option('password', 'jovyan') \
-        .load()
+    .format('jdbc') \
+    .option('url', 'jdbc:postgresql://localhost:5432/de') \
+    .option('driver', 'org.postgresql.Driver') \
+    .option('dbtable', 'subscribers_restaurants') \
+    .option('user', 'jovyan') \
+    .option('password', 'jovyan') \
+    .load() \
+    .dropDuplicates(['subscriber_id', 'restaurant_id'])
 
 # джойним данные из сообщения Kafka с пользователями подписки по restaurant_id (uuid).
 # Добавляем время создания события.
 result_df = filtered_read_stream_df \
-    .join(subscribers_restaurant_df,
-          subscribers_restaurant_df.restaurant_id == filtered_read_stream_df.restaurant_id, how='inner') \
+    .join(subscribers_restaurant_df, ['restaurant_id'], how='inner') \
     .select(
     filtered_read_stream_df.restaurant_id,
     filtered_read_stream_df.adv_campaign_id,
@@ -111,7 +120,7 @@ result_df = filtered_read_stream_df \
 
 def foreach_batch_function(df, epoch_id):
     df.persist()
-    df_postgres = df.withColumn('feedback', lit(''))
+    df_postgres = df.withColumn('feedback', when(col('feedback') != '', col('feedback')).otherwise(None))
     df_postgres \
         .write \
         .jdbc(url='jdbc:postgresql://localhost:5432/de',
@@ -128,6 +137,7 @@ def foreach_batch_function(df, epoch_id):
         col('datetime_created'),
         col('client_id'),
         col('trigger_datetime_created'),
+        col('feedback'),
     ))) \
         .select('value')
     df_kafka.write.format("kafka") \

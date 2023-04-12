@@ -23,6 +23,13 @@ kafka_security_options = {
     'kafka.sasl.jaas.config': 'org.apache.kafka.common.security.scram.ScramLoginModule required '
                               'username=\"de-student\" password=\"ltcneltyn\";',
 }
+
+postgresql_settings = {
+    'user': 'jovyan',
+    'password': 'jovyan',
+    'driver': 'org.postgresql.Driver',
+}
+
 kafka_bootstrap_servers = 'rc1b-2erh7b35n4j4v869.mdb.yandexcloud.net:9091'
 
 # создаём spark сессию с необходимыми библиотеками в spark_jars_packages для интеграции с Kafka и PostgreSQL
