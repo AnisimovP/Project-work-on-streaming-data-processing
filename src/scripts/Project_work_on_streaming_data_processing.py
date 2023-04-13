@@ -32,7 +32,6 @@ postgresql_settings = {
     'driver': 'org.postgresql.Driver',
 }
 
-
 kafka_bootstrap_servers = 'rc1b-2erh7b35n4j4v869.mdb.yandexcloud.net:9091'
 
 # создаём spark сессию с необходимыми библиотеками в spark_jars_packages для интеграции с Kafka и PostgreSQL
@@ -120,13 +119,14 @@ result_df = filtered_read_stream_df \
 
 def foreach_batch_function(df, epoch_id):
     df.persist()
-    df_postgres = df.withColumn('feedback', when(col('feedback') != '', col('feedback')).otherwise(None))
-    df_postgres \
-        .write \
-        .jdbc(url='jdbc:postgresql://localhost:5432/de',
-              table="subscribers_feedback", mode="append", properties=postgresql_settings)
-    df_kafka = df \
-        .withColumn('value', to_json(struct(
+
+    df_postgres = df.withColumn('feedback', lit(None).cast(StringType()).alias('feedback'))
+    df_postgres.write.jdbc(url='jdbc:postgresql://localhost:5432/de',
+                           table="subscribers_feedback",
+                           mode="append",
+                           properties=postgresql_settings)
+
+    df_kafka = df.withColumn('value', to_json(struct(
         col('restaurant_id'),
         col('adv_campaign_id'),
         col('adv_campaign_content'),
@@ -137,15 +137,16 @@ def foreach_batch_function(df, epoch_id):
         col('datetime_created'),
         col('client_id'),
         col('trigger_datetime_created'),
-        col('feedback'),
-    ))) \
+        col('feedback')))) \
         .select('value')
+
     df_kafka.write.format("kafka") \
         .option('kafka.bootstrap.servers', kafka_bootstrap_servers) \
         .options(**kafka_security_options) \
         .option("topic", TOPIC_OUT) \
         .option("truncate", False) \
         .save()
+
     df.unpersist()
 
 
